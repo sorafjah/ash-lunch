@@ -1,4 +1,4 @@
-<!DOCTYPE html>　
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -121,15 +121,29 @@ const rim = new THREE.DirectionalLight(0x8866ff, .5);
 rim.position.set(-6, 4, -4);
 scene.add(rim);
 
+// シーン全体（キャラ＋机）を必ず画面内に収めるための基準サイズ
+const SCENE_W = 13.5;        // 収めたい横幅
+const SCENE_H = 9.4;         // 収めたい縦幅
+const SCENE_CENTER_Y = 3.9;  // 縦方向の中心
+const FIT_MARGIN = 1.2;      // 余白係数
+
 function resize(){
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
-  camera.aspect = w/h;
-  // 縦画面ではやや引きで全身が入るように
-  camera.fov = w < h ? 60 : 46;
+  const aspect = w/h;
+  camera.aspect = aspect;
+  camera.fov = 50;
+  const vfov = camera.fov * Math.PI/180;
+  const distForHeight = (SCENE_H*FIT_MARGIN) / (2*Math.tan(vfov/2));
+  const distForWidth  = (SCENE_W*FIT_MARGIN) / (2*Math.tan(vfov/2)*aspect);
+  const dist = Math.max(distForHeight, distForWidth, 9);
+  camera.position.set(0, SCENE_CENTER_Y + dist*0.1, dist);
+  camera.lookAt(0, SCENE_CENTER_Y, 0);
   camera.updateProjectionMatrix();
 }
-addEventListener('resize', resize); resize();
+addEventListener('resize', resize);
+addEventListener('orientationchange', ()=>setTimeout(resize,300));
+resize();
 
 /* ============ サウンド (WebAudio) ============ */
 let AC = null;
@@ -685,6 +699,7 @@ canvas.addEventListener('pointermove', e=>{
 canvas.addEventListener('pointerup', e=>{
   if(!ptr) return;
   const dt=performance.now()-ptr.t0;
+  const startY=ptr.y0;
   const dx=e.clientX-ptr.x0, dy=e.clientY-ptr.y0;
   const dist=Math.hypot(dx,dy);
   const path=ptr.path; path.push([e.clientX,e.clientY]);
@@ -708,9 +723,12 @@ canvas.addEventListener('pointerup', e=>{
     if(G.state==='workout') doRep('pushup');
     return;
   }
-  if(Math.abs(dx)>45){
+  // 横スワイプ＝顔交代。筋トレ中はどこでもOK、食事中は画面上部（顔付近）から
+  // 始まった、はっきり横方向のスワイプのときだけ反応させる（誤爆防止）
+  const isHorizontal = Math.abs(dx) > Math.abs(dy)*1.4 && Math.abs(dx) > 65;
+  if(isHorizontal){
     if(G.state==='workout'){ showMsg('ちがう動き！'+EX_DEF[G.exKind].how, 800); SFX.bad(); }
-    else switchFace(dx<0?1:-1);
+    else if(startY < innerHeight*0.62){ switchFace(dx<0?1:-1); }
   }
 });
 
