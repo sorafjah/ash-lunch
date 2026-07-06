@@ -122,13 +122,15 @@ rim.position.set(-6, 4, -4);
 scene.add(rim);
 
 // シーン全体（キャラ＋机）を必ず画面内に収めるための基準サイズ
-const SCENE_W = 13.5;        // 収めたい横幅
-const SCENE_H = 9.4;         // 収めたい縦幅
-const SCENE_CENTER_Y = 3.9;  // 縦方向の中心
-const FIT_MARGIN = 1.2;      // 余白係数
+const SCENE_W = 10.5;        // 収めたい横幅（机の端は多少切れてOK）
+const SCENE_H = 8.6;         // 収めたい縦幅
+const SCENE_CENTER_Y = 3.7;  // 縦方向の中心
+const FIT_MARGIN = 1.12;     // 余白係数
 
 function resize(){
-  const w = innerWidth, h = innerHeight;
+  const vw = (window.visualViewport && window.visualViewport.width)  || innerWidth;
+  const vh = (window.visualViewport && window.visualViewport.height) || innerHeight;
+  const w = Math.round(vw), h = Math.round(vh);
   renderer.setSize(w, h, false);
   const aspect = w/h;
   camera.aspect = aspect;
@@ -136,13 +138,15 @@ function resize(){
   const vfov = camera.fov * Math.PI/180;
   const distForHeight = (SCENE_H*FIT_MARGIN) / (2*Math.tan(vfov/2));
   const distForWidth  = (SCENE_W*FIT_MARGIN) / (2*Math.tan(vfov/2)*aspect);
-  const dist = Math.max(distForHeight, distForWidth, 9);
+  const dist = Math.max(distForHeight, distForWidth, 8);
   camera.position.set(0, SCENE_CENTER_Y + dist*0.1, dist);
   camera.lookAt(0, SCENE_CENTER_Y, 0);
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
-addEventListener('orientationchange', ()=>setTimeout(resize,300));
+addEventListener('orientationchange', ()=>{ resize(); setTimeout(resize,300); setTimeout(resize,600); });
+if(window.visualViewport){ visualViewport.addEventListener('resize', resize); }
+addEventListener('load', ()=>{ resize(); setTimeout(resize,200); });
 resize();
 
 /* ============ サウンド (WebAudio) ============ */
