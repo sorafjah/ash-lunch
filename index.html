@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>アシュランチ</title>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#2a1a3a; touch-action:none;
+    font-family:'BIZ UDPGothic', sans-serif; user-select:none; -webkit-user-select:none; }
+  #c { position:fixed; inset:0; display:block; }
+  .ui { position:fixed; z-index:10; pointer-events:none; }
+  #hud { top:0; left:0; right:0; padding:10px 14px; display:flex; justify-content:space-between; align-items:flex-start; }
+  .hudbox { background:rgba(20,10,35,.72); border:2px solid #ffb84d; border-radius:14px; padding:8px 14px; color:#fff; min-width:110px; }
+  .hudlabel { font-size:11px; color:#ffd58a; letter-spacing:.1em; }
+  .hudval { font-size:22px; font-weight:700; line-height:1.2; }
+  #comboval { color:#7dff9b; }
+  #roundbox { text-align:center; }
+  /* 満腹ゲージ */
+  #gaugeWrap { bottom:calc(18px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); width:min(78vw,420px); }
+  #gaugeLabel { color:#fff; font-size:13px; font-weight:700; text-align:center; margin-bottom:4px; text-shadow:0 2px 4px rgba(0,0,0,.6); }
+  #gaugeBar { height:26px; background:rgba(0,0,0,.55); border:3px solid #fff; border-radius:14px; overflow:hidden; }
+  #gaugeFill { height:100%; width:0%; background:linear-gradient(90deg,#7dff9b,#ffe14d,#ff5d5d); border-radius:8px; transition:width .25s; }
+  #gaugeBar.danger { animation:gpulse .5s infinite alternate; }
+  @keyframes gpulse { from{box-shadow:0 0 0 0 rgba(255,60,60,.9);} to{box-shadow:0 0 22px 6px rgba(255,60,60,.9);} }
+  /* メッセージ */
+  #msg { top:20%; left:50%; transform:translate(-50%,-50%) scale(0); color:#fff; font-size:clamp(24px,6vw,44px);
+    font-weight:700; text-shadow:0 3px 0 #b3410f, 0 6px 14px rgba(0,0,0,.5); white-space:nowrap; transition:transform .18s; }
+  #msg.show { transform:translate(-50%,-50%) scale(1); }
+  /* 筋トレ指示 */
+  #exo { top:14%; left:50%; transform:translateX(-50%); text-align:center; display:none; }
+  #exoName { color:#fff; font-size:clamp(26px,7vw,50px); font-weight:700; text-shadow:0 3px 0 #0a5c8a,0 6px 14px rgba(0,0,0,.5); }
+  #exoHow { color:#aef; font-size:clamp(15px,4vw,22px); font-weight:700; margin-top:4px; }
+  #exoRep { color:#ffe14d; font-size:clamp(20px,5vw,32px); font-weight:700; margin-top:6px; }
+  /* 画面オーバーレイ */
+  .screen { position:fixed; inset:0; z-index:30; background:rgba(24,10,40,.88); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; color:#fff; text-align:center; padding:24px; pointer-events:auto; }
+  .title { font-size:clamp(40px,10vw,76px); font-weight:700; letter-spacing:.05em;
+    background:linear-gradient(180deg,#ffe14d,#ff8c2e); -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:none; filter:drop-shadow(0 4px 0 #7a2e00); }
+  .sub { font-size:clamp(14px,3.5vw,18px); line-height:1.9; margin:18px 0 8px; color:#ffe9c9; }
+  .btn { pointer-events:auto; margin-top:20px; min-width:220px; min-height:56px; font-family:inherit; font-size:22px; font-weight:700;
+    color:#5a2600; background:linear-gradient(180deg,#ffe14d,#ffab2e); border:none; border-radius:999px; padding:14px 40px;
+    box-shadow:0 6px 0 #b3671a; cursor:pointer; }
+  .btn:active { transform:translateY(4px); box-shadow:0 2px 0 #b3671a; }
+  .rule { display:inline-block; text-align:left; background:rgba(255,255,255,.08); border-radius:14px; padding:14px 20px; font-size:clamp(13px,3.4vw,16px); line-height:2; }
+  #result { display:none; }
+  #resultScore { font-size:clamp(36px,9vw,64px); font-weight:700; color:#ffe14d; margin:8px 0; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ui" id="hud">
+  <div class="hudbox"><div class="hudlabel">スコア</div><div class="hudval" id="scoreval">0</div></div>
+  <div class="hudbox" id="roundbox"><div class="hudlabel">ラウンド</div><div class="hudval" id="roundval">1 / 10</div></div>
+  <div class="hudbox"><div class="hudlabel">コンボ</div><div class="hudval" id="comboval">×0</div></div>
+</div>
+
+<div class="ui" id="gaugeWrap">
+  <div id="gaugeLabel">😄 まんぷくゲージ</div>
+  <div id="gaugeBar"><div id="gaugeFill"></div></div>
+</div>
+
+<div class="ui" id="msg"></div>
+
+<div class="ui" id="exo">
+  <div id="exoName"></div>
+  <div id="exoHow"></div>
+  <div id="exoRep"></div>
+</div>
+
+<div class="screen" id="titleScreen">
+  <div class="title">アシュランチ</div>
+  <div class="sub">阿修羅、ランチ食べ放題に行く。</div>
+  <div class="rule">
+    🍣 <b>食べ物をタップ</b> → 腕がとって口へ運ぶ<br>
+    😵 満腹になったら <b>横スワイプ</b> で顔を交代<br>
+    🤮 がまんして食べ続けると…オェェ〜（減点）<br>
+    💪 ときどき筋トレモード！<br>
+    　・ジャンプ＝<b>タップ</b>　・腕立て＝<b>縦スワイプ</b><br>
+    　・スクワット＝<b>Vの字スワイプ</b>（下→上）<br>
+    🏁 10ラウンド完食でフィナーレ！
+  </div>
+  <button class="btn" id="startBtn">はじめる</button>
+</div>
+
+<div class="screen" id="result">
+  <div class="title" style="font-size:clamp(30px,8vw,56px)">ごちそうさま！</div>
+  <div class="sub" id="resultMsg"></div>
+  <div id="resultScore">0</div>
+  <div class="sub" id="resultDetail"></div>
+  <button class="btn" id="retryBtn">もういちど</button>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ============ 基本セットアップ ============ */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x3b2a55);
+scene.fog = new THREE.Fog(0x3b2a55, 20, 45);
+
+const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 100);
+camera.position.set(0, 5.6, 12.5);
+camera.lookAt(0, 3.4, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, .65));
+const sun = new THREE.DirectionalLight(0xfff2dd, 1.15);
+sun.position.set(4, 10, 6);
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0x8866ff, .5);
+rim.position.set(-6, 4, -4);
+scene.add(rim);
+
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h;
+  // 縦画面ではやや引きで全身が入るように
+  camera.fov = w < h ? 60 : 46;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+/* ============ サウンド (WebAudio) ============ */
+let AC = null;
+function audio(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; }
+function tone(freq, dur, type='square', vol=.15, slide=0){
+  const ac=audio(), o=ac.createOscillator(), g=ac.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq, ac.currentTime);
+  if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide), ac.currentTime+dur);
+  g.gain.setValueAtTime(vol, ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001, ac.currentTime+dur);
+  o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime+dur);
+}
+function noiseBurst(dur=.08, vol=.2){
+  const ac=audio(), len=ac.sampleRate*dur, buf=ac.createBuffer(1,len,ac.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  const s=ac.createBufferSource(); s.buffer=buf;
+  const g=ac.createGain(); g.gain.value=vol;
+  s.connect(g).connect(ac.destination); s.start();
+}
+const SFX = {
+  chomp(){ noiseBurst(.07,.25); tone(180,.08,'square',.1,-60); },
+  pop(){ tone(520,.1,'sine',.15,300); },
+  swipe(){ tone(300,.15,'triangle',.12,500); },
+  warn(){ tone(660,.12,'square',.12); setTimeout(()=>tone(660,.12,'square',.12),160); },
+  vomit(){ tone(400,.9,'sawtooth',.18,-320); noiseBurst(.5,.15); },
+  muscle(){ tone(220,.12,'square',.14); setTimeout(()=>tone(330,.12,'square',.14),120); setTimeout(()=>tone(440,.2,'square',.14),240); },
+  rep(){ tone(500,.09,'square',.13,200); },
+  fanfare(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.25,'square',.14),i*140)); },
+  bad(){ tone(200,.3,'sawtooth',.14,-120); }
+};
+
+/* ============ 色・マテリアル ============ */
+const SKIN = 0xf2c48d;
+const mat = (c, opts={}) => new THREE.MeshStandardMaterial({color:c, roughness:.75, metalness:.05, ...opts});
+const M = {
+  skin: mat(SKIN),
+  robe: mat(0xd0452e),
+  robe2: mat(0x8a1f1f),
+  gold: mat(0xf5c542, {metalness:.6, roughness:.35}),
+  wood: mat(0x8a5a2e),
+  woodDark: mat(0x5e3a1a),
+  plate: mat(0xfdfdf6),
+  board: mat(0xfff6dd),
+  floor: mat(0x6b4a86),
+};
+
+/* ============ 顔テクスチャ（Canvas） ============ */
+function makeFaceTexture(){ 
+  const cv=document.createElement('canvas'); cv.width=cv.height=256;
+  const tx=new THREE.CanvasTexture(cv); tx.colorSpace=THREE.SRGBColorSpace;
+  return {cv, ctx:cv.getContext('2d'), tx};
+}
+// type: 'smile'|'angry'|'haniwa' / blue:0-1 / mouthOpen:0-1
+function drawFace(f, type, blue, mouthOpen=0){
+  const c=f.ctx, S=256;
+  // 肌色→青へ
+  const skin={r:242,g:196,b:141}, bl={r:120,g:180,b:235};
+  const mix=(a,b)=>Math.round(a+(b-a)*blue);
+  c.fillStyle=`rgb(${mix(skin.r,bl.r)},${mix(skin.g,bl.g)},${mix(skin.b,bl.b)})`;
+  c.fillRect(0,0,S,S);
+  c.strokeStyle='#3a2410'; c.fillStyle='#3a2410'; c.lineWidth=9; c.lineCap='round';
+  const ey=100;
+  if(type==='smile'){
+    // にっこり目 ∪∪
+    c.beginPath(); c.arc(84,ey,20,Math.PI*1.1,Math.PI*1.9); c.stroke();
+    c.beginPath(); c.arc(172,ey,20,Math.PI*1.1,Math.PI*1.9); c.stroke();
+    // ほっぺ
+    c.fillStyle='rgba(255,120,120,.55)';
+    c.beginPath(); c.ellipse(58,150,16,10,0,0,7); c.fill();
+    c.beginPath(); c.ellipse(198,150,16,10,0,0,7); c.fill();
+  } else if(type==='angry'){
+    // つり眉＋目
+    c.beginPath(); c.moveTo(60,78); c.lineTo(104,96); c.stroke();
+    c.beginPath(); c.moveTo(196,78); c.lineTo(152,96); c.stroke();
+    c.fillStyle='#3a2410';
+    c.beginPath(); c.ellipse(84,ey+14,11,14,0,0,7); c.fill();
+    c.beginPath(); c.ellipse(172,ey+14,11,14,0,0,7); c.fill();
+  } else { // haniwa 無表情：くり抜き風の黒だ円
+    c.fillStyle='#1c1008';
+    c.beginPath(); c.ellipse(84,ey,17,24,0,0,7); c.fill();
+    c.beginPath(); c.ellipse(172,ey,17,24,0,0,7); c.fill();
+  }
+  // 口
+  c.fillStyle='#1c1008'; c.strokeStyle='#1c1008';
+  const my=178;
+  if(mouthOpen>0.05){
+    const h=14+mouthOpen*46;
+    c.beginPath(); c.ellipse(128,my,26,h/2+8,0,0,7); c.fill();
+  } else if(type==='smile'){
+    c.beginPath(); c.arc(128,my-14,30,Math.PI*.15,Math.PI*.85); c.stroke();
+  } else if(type==='angry'){
+    c.beginPath(); c.arc(128,my+18,28,Math.PI*1.15,Math.PI*1.85); c.stroke();
+  } else {
+    c.beginPath(); c.ellipse(128,my,15,20,0,0,7); c.fill();
+  }
+  f.tx.needsUpdate=true;
+}
+
+/* ============ アシュラ本体 ============ */
+const ashura = new THREE.Group();       // 全体（筋トレ移動用）
+const bodyRoot = new THREE.Group();     // 上下運動・前傾用
+ashura.add(bodyRoot);
+scene.add(ashura);
+
+// 胴体（衣）
+const torso = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.55, 2.9, 20), M.robe);
+torso.position.y = 3.4; bodyRoot.add(torso);
+const belt = new THREE.Mesh(new THREE.TorusGeometry(1.32, .14, 10, 24), M.gold);
+belt.rotation.x = Math.PI/2; belt.position.y = 2.75; bodyRoot.add(belt);
+const skirt = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.9, 1.2, 20), M.robe2);
+skirt.position.y = 1.55; bodyRoot.add(skirt);
+// 座り座布団
+const zabuton = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.2, .35, 24), mat(0x2e7d5b));
+zabuton.position.y = .9; bodyRoot.add(zabuton);
+
+// 首と頭（3面）
+const neck = new THREE.Mesh(new THREE.CylinderGeometry(.42,.5,.6,12), M.skin);
+neck.position.y = 5.05; bodyRoot.add(neck);
+
+const headGroup = new THREE.Group();
+headGroup.position.y = 6.0; bodyRoot.add(headGroup);
+const headBase = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 1.7, 24), M.skin);
+headGroup.add(headBase);
+const headTop = new THREE.Mesh(new THREE.SphereGeometry(1.05, 24, 16, 0, Math.PI*2, 0, Math.PI/2), M.skin);
+headTop.position.y = .85; headGroup.add(headTop);
+// 冠
+const crown = new THREE.Mesh(new THREE.TorusGeometry(1.02,.1,10,24), M.gold);
+crown.rotation.x = Math.PI/2; crown.position.y = 1.15; headGroup.add(crown);
+const crownJewel = new THREE.Mesh(new THREE.SphereGeometry(.22,12,10), M.gold);
+crownJewel.position.set(0,1.45,0); headGroup.add(crownJewel);
+
+// 3つの顔プレーン（120°間隔）
+const FACE_TYPES = ['smile','angry','haniwa'];
+const FACE_EMOJI = ['😄','😠','🗿'];
+const faces = FACE_TYPES.map((type,i)=>{
+  const f = makeFaceTexture();
+  drawFace(f, type, 0);
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.55,1.55),
+    new THREE.MeshBasicMaterial({map:f.tx, transparent:true}));
+  const ang = i * (Math.PI*2/3);
+  plane.position.set(Math.sin(ang)*1.06, 0, Math.cos(ang)*1.06);
+  plane.rotation.y = ang;
+  headGroup.add(plane);
+  return {type, tex:f, plane, fullness:0, lastDrawn:{blue:-1, mouth:-1}};
+});
+let activeFace = 0;               // 正面(z+)を向いている顔のindex
+let headTargetRot = 0;            // headGroup.rotation.y の目標
+
+function faceBlueOf(i){ return THREE.MathUtils.clamp((faces[i].fullness-55)/45, 0, 1); }
+function refreshFace(i, mouthOpen=0){
+  const f = faces[i];
+  const blue = faceBlueOf(i);
+  const bB=Math.round(blue*20), bM=Math.round(mouthOpen*10);
+  if(f.lastDrawn.blue!==bB || f.lastDrawn.mouth!==bM){
+    drawFace(f.tex, f.type, blue, mouthOpen);
+    f.lastDrawn={blue:bB, mouth:bM};
+  }
+}
+
+/* ============ 腕（6本・2ボーンIK） ============ */
+const upVec = new THREE.Vector3(0,1,0);
+function setLimb(mesh, a, b){
+  const d = new THREE.Vector3().subVectors(b,a);
+  const len = Math.max(d.length(), .001);
+  mesh.position.copy(a).addScaledVector(d, .5);
+  mesh.scale.set(1, len, 1);
+  mesh.quaternion.setFromUnitVectors(upVec, d.normalize());
+}
+function makeArm(shoulderPos, bendDir){
+  const g = {
+    shoulder: shoulderPos.clone(),
+    bend: bendDir.clone().normalize(),
+    L1: 1.15, L2: 1.15,
+    hand: new THREE.Vector3(),        // 現在の手位置(bodyRootローカル)
+    target: new THREE.Vector3(),      // 目標
+    speed: 6,
+    upper: new THREE.Mesh(new THREE.CylinderGeometry(.16,.14,1,10), M.skin),
+    fore:  new THREE.Mesh(new THREE.CylinderGeometry(.14,.12,1,10), M.skin),
+    handMesh: new THREE.Mesh(new THREE.SphereGeometry(.22,12,10), M.skin),
+    held: null,                       // 持っている物 (Object3D)
+  };
+  bodyRoot.add(g.upper, g.fore, g.handMesh);
+  return g;
+}
+function solveArm(arm, dt){
+  arm.hand.lerp(arm.target, Math.min(1, arm.speed*dt));
+  const s=arm.shoulder, t=arm.hand;
+  const dv=new THREE.Vector3().subVectors(t,s);
+  let d=THREE.MathUtils.clamp(dv.length(), .1, arm.L1+arm.L2-.02);
+  const dir=dv.normalize();
+  const a=(arm.L1*arm.L1 - arm.L2*arm.L2 + d*d)/(2*d);
+  const h=Math.sqrt(Math.max(arm.L1*arm.L1 - a*a, 0));
+  const mid=new THREE.Vector3().copy(s).addScaledVector(dir,a);
+  const perp=new THREE.Vector3().copy(arm.bend).addScaledVector(dir, -arm.bend.dot(dir));
+  if(perp.lengthSq()<.001) perp.set(0,0,1);
+  perp.normalize();
+  const elbow=mid.addScaledVector(perp,h);
+  const handPos=new THREE.Vector3().copy(s).addScaledVector(dir,d);
+  setLimb(arm.upper, s, elbow);
+  setLimb(arm.fore, elbow, handPos);
+  arm.handMesh.position.copy(handPos);
+  if(arm.held){ arm.held.position.copy(handPos); arm.held.position.y+=.1; }
+}
+// 3段×左右  [段][0:右(+x) 1:左(-x)]  ※画面から見て
+const arms = [
+  [ makeArm(new THREE.Vector3( 1.05,4.75,.25), new THREE.Vector3( 1,.3,.4)),
+    makeArm(new THREE.Vector3(-1.05,4.75,.25), new THREE.Vector3(-1,.3,.4)) ],   // 上段：お知らせ係
+  [ makeArm(new THREE.Vector3( 1.15,4.1,.3),  new THREE.Vector3( 1,-.2,.6)),
+    makeArm(new THREE.Vector3(-1.15,4.1,.3),  new THREE.Vector3(-1,-.2,.6)) ],   // 中段：食事・皿
+  [ makeArm(new THREE.Vector3( 1.1,3.45,.35), new THREE.Vector3( 1,-.4,.7)),
+    makeArm(new THREE.Vector3(-1.1,3.45,.35), new THREE.Vector3(-1,-.4,.7)) ],   // 下段：ハラ押さえ・看板
+];
+const REST = [
+  [ new THREE.Vector3( 2.1,5.6,.6),  new THREE.Vector3(-2.1,5.6,.6) ],
+  [ new THREE.Vector3( 1.9,2.85,2.0),new THREE.Vector3(-1.9,2.85,2.0) ],
+  [ new THREE.Vector3( 1.5,3.1,1.5), new THREE.Vector3(-1.5,3.1,1.5) ],
+];
+function restAll(){ for(let t=0;t<3;t++) for(let s=0;s<2;s++) arms[t][s].target.copy(REST[t][s]); }
+restAll();
+arms.flat().forEach(a=>a.hand.copy(a.target));
+
+const MOUTH = new THREE.Vector3(0, 5.75, 1.35);   // bodyRootローカルの口位置
+
+/* ============ 看板（自主規制） ============ */
+const boardCv = document.createElement('canvas'); boardCv.width=512; boardCv.height=320;
+{
+  const c=boardCv.getContext('2d');
+  c.fillStyle='#fff6dd'; c.fillRect(0,0,512,320);
+  c.strokeStyle='#8a5a2e'; c.lineWidth=16; c.strokeRect(8,8,496,304);
+  c.fillStyle='#c0392b'; c.font="700 64px 'BIZ UDPGothic',sans-serif"; c.textAlign='center';
+  c.fillText('ただいま', 256, 130);
+  c.fillText('自主規制中', 256, 220);
+  c.font="700 36px 'BIZ UDPGothic',sans-serif"; c.fillStyle='#7a4a10';
+  c.fillText('お見せできません🙏', 256, 285);
+}
+const boardTex = new THREE.CanvasTexture(boardCv); boardTex.colorSpace=THREE.SRGBColorSpace;
+const board = new THREE.Group();
+const boardFace = new THREE.Mesh(new THREE.PlaneGeometry(2.6,1.62), new THREE.MeshBasicMaterial({map:boardTex}));
+const boardStick = new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,1.6,8), M.wood);
+boardStick.position.y = -1.4;
+board.add(boardFace, boardStick);
+board.visible = false;
+bodyRoot.add(board);
+
+/* ============ バツ札（上段用） ============ */
+function makeSign(text, bg, fg){
+  const cv=document.createElement('canvas'); cv.width=cv.height=256;
+  const c=cv.getContext('2d');
+  c.fillStyle=bg; c.beginPath(); c.arc(128,128,120,0,7); c.fill();
+  c.fillStyle=fg; c.font="700 150px 'BIZ UDPGothic',sans-serif"; c.textAlign='center'; c.textBaseline='middle';
+  c.fillText(text, 128, 140);
+  const t=new THREE.CanvasTexture(cv); t.colorSpace=THREE.SRGBColorSpace;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(.9,.9), new THREE.MeshBasicMaterial({map:t, transparent:true}));
+  m.visible=false; bodyRoot.add(m); return m;
+}
+const signX_R = makeSign('✕','#e74c3c','#fff');
+const signX_L = makeSign('✕','#e74c3c','#fff');
+const signMuscle = makeSign('💪','#f5c542','#fff');
+
+/* ============ 机・部屋 ============ */
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(80,80), M.floor);
+floor.rotation.x = -Math.PI/2; scene.add(floor);
+// のれん風の背景
+const noren = new THREE.Mesh(new THREE.PlaneGeometry(30,9), mat(0x24304d));
+noren.position.set(0,5,-9); scene.add(noren);
+for(let i=-2;i<=2;i++){
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(.5,12,10), new THREE.MeshBasicMaterial({color:0xffd58a}));
+  lamp.position.set(i*4.2, 7.6, -8.8); scene.add(lamp);
+}
+
+const table = new THREE.Group();
+const tableTop = new THREE.Mesh(new THREE.BoxGeometry(11,.35,3.2), M.wood);
+tableTop.position.y = 2.35; table.add(tableTop);
+[[-5,-1.2],[5,-1.2],[-5,1.2],[5,1.2]].forEach(([x,z])=>{
+  const leg=new THREE.Mesh(new THREE.BoxGeometry(.35,2.2,.35), M.woodDark);
+  leg.position.set(x,1.1,z); table.add(leg);
+});
+table.position.z = 2.9;
+scene.add(table);
+let tableTargetX = 0;   // 筋トレ時に横へどける
+
+/* ============ 食べ物 ============ */
+function foodPiece(kind){
+  const g=new THREE.Group(); g.userData.kind=kind; g.userData.isFood=true;
+  const add=(geo,m,x=0,y=0,z=0,rx=0)=>{ const mm=new THREE.Mesh(geo,m); mm.position.set(x,y,z); mm.rotation.x=rx; g.add(mm); return mm; };
+  switch(kind){
+    case 'sushi':
+      add(new THREE.BoxGeometry(.55,.22,.3), mat(0xfffef2), 0,.11);
+      add(new THREE.BoxGeometry(.58,.14,.33), mat(0xff7a5c), 0,.28); break;
+    case 'onigiri': {
+      const o=add(new THREE.SphereGeometry(.3,10,8), mat(0xfffef2), 0,.3); o.scale.set(1,1.05,.65);
+      add(new THREE.BoxGeometry(.34,.2,.1), mat(0x1c2b1c), 0,.16,.13); break; }
+    case 'ramen':
+      add(new THREE.CylinderGeometry(.34,.24,.26,14), mat(0xe74c3c), 0,.13);
+      add(new THREE.CylinderGeometry(.3,.3,.06,14), mat(0xf7e8b0), 0,.28);
+      add(new THREE.TorusGeometry(.14,.05,8,14), mat(0xffc2d1), 0,.33,0,-Math.PI/2); break;
+    case 'karaage':
+      add(new THREE.DodecahedronGeometry(.24), mat(0xb5651d), -.12,.22);
+      add(new THREE.DodecahedronGeometry(.2),  mat(0xc9752a),  .15,.18); break;
+    case 'cake':
+      add(new THREE.CylinderGeometry(.3,.3,.28,14), mat(0xfff3f6), 0,.14);
+      add(new THREE.SphereGeometry(.11,10,8), mat(0xe0284a), 0,.36); break;
+    case 'apple':
+      add(new THREE.SphereGeometry(.27,12,10), mat(0xd8232a), 0,.27);
+      add(new THREE.CylinderGeometry(.03,.03,.16,6), M.woodDark, 0,.5); break;
+    case 'pudding':
+      add(new THREE.CylinderGeometry(.2,.28,.3,14), mat(0xf7c948), 0,.15);
+      add(new THREE.CylinderGeometry(.2,.21,.08,14), mat(0x8a5a2e), 0,.33); break;
+    case 'dango':
+      add(new THREE.CylinderGeometry(.02,.02,.6,6), M.wood, 0,.3, 0, 0);
+      add(new THREE.SphereGeometry(.12,10,8), mat(0xffb7c5), 0,.5);
+      add(new THREE.SphereGeometry(.12,10,8), mat(0xfffef2), 0,.3);
+      add(new THREE.SphereGeometry(.12,10,8), mat(0x7ba05b), 0,.1); break;
+  }
+  return g;
+}
+const FOOD_KINDS = ['sushi','onigiri','ramen','karaage','cake','apple','pudding','dango'];
+
+let plate = null;           // {group, pieces[]}
+const PLATE_Y = 2.55;       // 机の上（ワールド）
+const PLATE_Z = 2.6;
+function spawnPlate(){
+  const g = new THREE.Group();
+  const dish = new THREE.Mesh(new THREE.CylinderGeometry(1.05,.85,.14,20), M.plate);
+  g.add(dish);
+  const pieces=[];
+  const slots=[[-.55,0],[0,-.12],[.55,0]];
+  for(let i=0;i<3;i++){
+    const kind = FOOD_KINDS[Math.floor(Math.random()*FOOD_KINDS.length)];
+    const p = foodPiece(kind);
+    p.position.set(slots[i][0], .08, slots[i][1]);
+    g.add(p); pieces.push(p);
+  }
+  g.position.set(-9, PLATE_Y, PLATE_Z);
+  scene.add(g);
+  plate = {group:g, pieces, state:'slide-in'};
+  SFX.pop();
+}
+function removePlate(){ if(plate){ scene.remove(plate.group); plate=null; } }
+
+/* ============ 紙吹雪 ============ */
+const confetti=[];
+function burstConfetti(n=80){
+  for(let i=0;i<n;i++){
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(.22,.22),
+      new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(Math.random(),.9,.6), side:THREE.DoubleSide}));
+    m.position.set((Math.random()-.5)*10, 8+Math.random()*3, (Math.random()-.5)*4+1);
+    m.userData.v=new THREE.Vector3((Math.random()-.5)*2, -1.5-Math.random()*1.5, 0);
+    m.userData.spin=(Math.random()-.5)*8;
+    scene.add(m); confetti.push(m);
+  }
+}
+
+/* ============ ゲーム状態 ============ */
+const $ = id=>document.getElementById(id);
+const msgEl=$('msg');
+let msgTimer=null;
+function showMsg(t, ms=1300){
+  msgEl.textContent=t; msgEl.classList.add('show');
+  clearTimeout(msgTimer);
+  msgTimer=setTimeout(()=>msgEl.classList.remove('show'), ms);
+}
+
+const G = {
+  state:'title',        // title / eating / feeding / clearing / vomit / workout / finale
+  score:0, combo:0, round:1, maxRound:10,
+  eatenThisRound:0, eatPerRound:9,
+  vomitCount:0, totalEaten:0, bestCombo:0,
+  feedT:0, feedPhase:0, feedTarget:null,
+  vomitT:0, warnT:0,
+  // workout
+  exList:[], exIdx:0, reps:0, repsNeed:5, repAnimT:1, exKind:'',
+  finaleT:0,
+};
+const FULL_PER_FOOD = 18;
+const WARN_AT = 60;
+
+function updHUD(){
+  $('scoreval').textContent = G.score.toLocaleString();
+  $('comboval').textContent = '×'+G.combo;
+  $('roundval').textContent = G.round+' / '+G.maxRound;
+  const f=faces[activeFace].fullness;
+  $('gaugeFill').style.width = Math.min(100,f)+'%';
+  $('gaugeLabel').textContent = FACE_EMOJI[activeFace]+' まんぷくゲージ '+Math.round(Math.min(100,f))+'%';
+  $('gaugeBar').classList.toggle('danger', f>=WARN_AT && (G.state==='eating'||G.state==='feeding'||G.state==='clearing'));
+}
+
+function startGame(){
+  G.state='eating'; G.score=0; G.combo=0; G.round=1;
+  G.eatenThisRound=0; G.vomitCount=0; G.totalEaten=0; G.bestCombo=0;
+  faces.forEach(f=>{f.fullness=0; f.lastDrawn={blue:-1,mouth:-1};});
+  activeFace=0; headTargetRot=0; headGroup.rotation.y=0;
+  arms.flat().forEach(a=>{a.held=null;});
+  removePlate(); spawnPlate();
+  tableTargetX=0; table.position.x=0;
+  bodyRoot.position.set(0,0,0); bodyRoot.rotation.set(0,0,0);
+  board.visible=false; signX_R.visible=signX_L.visible=signMuscle.visible=false;
+  $('titleScreen').classList.add('hidden');
+  $('result').style.display='none';
+  $('exo').style.display='none';
+  restAll(); updHUD();
+  showMsg('いただきます！🙏', 1200);
+  SFX.fanfare();
+}
+$('startBtn').addEventListener('click', ()=>{ audio(); startGame(); });
+$('retryBtn').addEventListener('click', ()=>{ audio(); startGame(); });
+
+/* ============ 食べる ============ */
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+function tryEat(x,y){
+  if(G.state!=='eating' || !plate || plate.state!=='ready') return;
+  ndc.set(x/innerWidth*2-1, -(y/innerHeight)*2+1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(plate.pieces, true);
+  if(!hits.length) return;
+  let obj=hits[0].object;
+  while(obj && !obj.userData.isFood) obj=obj.parent;
+  if(!obj) return;
+  // 掴む開始
+  G.state='feeding'; G.feedPhase=0; G.feedT=0; G.feedTarget=obj;
+  SFX.pop();
+}
+function worldToBody(v){ return bodyRoot.worldToLocal(v.clone()); }
+
+function finishEat(){
+  const f=faces[activeFace];
+  f.fullness += FULL_PER_FOOD;
+  G.totalEaten++; G.eatenThisRound++;
+  const gain = Math.round(100*(1+G.combo*.1));
+  G.score += gain;
+  SFX.chomp();
+  showMsg(['うまい！','もぐもぐ','ぱくり！','ごくん！'][Math.floor(Math.random()*4)]+' +'+gain, 700);
+  refreshFace(activeFace);
+  updHUD();
+  if(f.fullness>100){ startVomit(); return; }
+  if(f.fullness>=WARN_AT) SFX.warn();
+  // 皿が空なら片付け
+  if(plate && plate.pieces.length===0){ G.state='clearing'; G.feedT=0; G.feedPhase=0; }
+  else G.state='eating';
+}
+
+/* ============ 交代 ============ */
+function switchFace(dir){
+  if(!(G.state==='eating'||G.state==='feeding'||G.state==='clearing')) return;
+  const wasFull = faces[activeFace].fullness>=WARN_AT;
+  activeFace = (activeFace + (dir>0?1:2)) % 3;
+  headTargetRot += (dir>0? -1: 1) * (Math.PI*2/3);
+  SFX.swipe();
+  if(wasFull){
+    G.combo++; G.bestCombo=Math.max(G.bestCombo,G.combo);
+    G.score+=500;
+    showMsg('ナイス交代！+500 🔄', 1100);
+  } else {
+    showMsg('交代！'+FACE_EMOJI[activeFace], 800);
+  }
+  // 食べかけはキャンセルして通常へ
+  if(G.state==='feeding'){ if(G.feedTarget && arms[1][0].held===G.feedTarget){ arms[1][0].held=null; scene.remove(G.feedTarget);} G.state='eating'; }
+  updHUD();
+}
+
+/* ============ 嘔吐 ============ */
+function startVomit(){
+  G.state='vomit'; G.vomitT=0; G.vomitCount++;
+  G.combo=0; G.score=Math.max(0,G.score-300);
+  board.visible=true;
+  SFX.vomit();
+  showMsg('オェェェ〜〜！🤢 −300', 1800);
+  updHUD();
+}
+
+/* ============ 筋トレ ============ */
+const EX_DEF = {
+  jump:   {name:'ジャンプ',   how:'画面をタップ！',        icon:'🦘'},
+  pushup: {name:'うでたて',   how:'たてにスワイプ！',      icon:'💪'},
+  squat:  {name:'スクワット', how:'Ｖの字にスワイプ！(下→上)', icon:'🏋️'},
+};
+function startWorkout(){
+  G.state='workout';
+  G.exList=[]; for(let i=0;i<G.repsNeed;i++) G.exList.push(['jump','pushup','squat'][Math.floor(Math.random()*3)]);
+  G.exIdx=0; G.reps=0; G.repAnimT=1;
+  tableTargetX = -14;
+  removePlate();
+  signMuscle.visible=true;
+  SFX.muscle();
+  showMsg('食べすぎだ〜！筋トレモード！💪', 1600);
+  setTimeout(()=>{ if(G.state==='workout') nextExercise(); }, 900);
+}
+function nextExercise(){
+  G.exKind = G.exList[G.exIdx];
+  const d=EX_DEF[G.exKind];
+  $('exo').style.display='block';
+  $('exoName').textContent = d.icon+' '+d.name;
+  $('exoHow').textContent = d.how;
+  $('exoRep').textContent = (G.exIdx+1)+' / '+G.repsNeed;
+}
+function doRep(kind){
+  if(G.state!=='workout' || G.repAnimT<1) return;
+  if(kind!==G.exKind){ showMsg('ちがう動き！'+EX_DEF[G.exKind].how, 800); SFX.bad(); return; }
+  G.repAnimT=0; SFX.rep();
+}
+function repDone(){
+  G.exIdx++;
+  G.score+=200;
+  if(G.exIdx>=G.repsNeed){ finishWorkout(); }
+  else nextExercise();
+  updHUD();
+}
+function finishWorkout(){
+  $('exo').style.display='none';
+  signMuscle.visible=false;
+  faces.forEach((f,i)=>{ f.fullness=Math.max(0,f.fullness-60); refreshFace(i); });
+  G.score+=1000;
+  SFX.fanfare();
+  G.round++;
+  if(G.round>G.maxRound){ startFinale(); return; }
+  showMsg('筋トレ完了！+1000 ✨ 次のラウンド！', 1500);
+  tableTargetX=0;
+  G.eatenThisRound=0;
+  bodyRoot.rotation.set(0,0,0); bodyRoot.position.set(0,0,0);
+  setTimeout(()=>{ if(G.state==='workout'){ G.state='eating'; spawnPlate(); restAll(); updHUD(); } }, 1000);
+}
+
+/* ============ フィナーレ ============ */
+function startFinale(){
+  G.state='finale'; G.finaleT=0;
+  tableTargetX=0;
+  bodyRoot.rotation.set(0,0,0); bodyRoot.position.set(0,0,0);
+  faces.forEach((f,i)=>{ f.fullness=0; drawFace(f.tex,'smile',0); f.lastDrawn={blue:99,mouth:99}; });
+  burstConfetti(120);
+  SFX.fanfare(); setTimeout(()=>SFX.fanfare(),600);
+  showMsg('🎉 阿修羅、大満足！ 🎉', 2500);
+  setTimeout(()=>{
+    $('result').style.display='flex';
+    $('resultScore').textContent = G.score.toLocaleString()+' 点';
+    $('resultMsg').textContent = '10ラウンド完食！おみごと！';
+    $('resultDetail').textContent =
+      `食べた数：${G.totalEaten}品 ／ 最大コンボ：×${G.bestCombo} ／ オェェ回数：${G.vomitCount}回`;
+  }, 2600);
+}
+
+/* ============ 入力（タップ・スワイプ・V字） ============ */
+let ptr=null;
+canvas.addEventListener('pointerdown', e=>{
+  audio();
+  ptr={x0:e.clientX, y0:e.clientY, t0:performance.now(), path:[[e.clientX,e.clientY]]};
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!ptr) return;
+  const p=ptr.path[ptr.path.length-1];
+  if(Math.hypot(e.clientX-p[0], e.clientY-p[1])>6) ptr.path.push([e.clientX,e.clientY]);
+});
+canvas.addEventListener('pointerup', e=>{
+  if(!ptr) return;
+  const dt=performance.now()-ptr.t0;
+  const dx=e.clientX-ptr.x0, dy=e.clientY-ptr.y0;
+  const dist=Math.hypot(dx,dy);
+  const path=ptr.path; path.push([e.clientX,e.clientY]);
+  ptr=null;
+
+  // タップ
+  if(dt<350 && dist<12){
+    if(G.state==='workout') doRep('jump');
+    else tryEat(e.clientX, e.clientY);
+    return;
+  }
+  // V字判定：一番低い点（yが最大）で分割し、下降→上昇があるか
+  let lowest=0;
+  for(let i=1;i<path.length;i++) if(path[i][1]>path[lowest][1]) lowest=i;
+  const downSeg = path[lowest][1]-path[0][1];
+  const upSeg   = path[lowest][1]-path[path.length-1][1];
+  const isV = downSeg>45 && upSeg>45 && lowest>0 && lowest<path.length-1;
+
+  if(isV){ if(G.state==='workout') doRep('squat'); return; }
+  if(Math.abs(dy)>Math.abs(dx) && Math.abs(dy)>45){
+    if(G.state==='workout') doRep('pushup');
+    return;
+  }
+  if(Math.abs(dx)>45){
+    if(G.state==='workout'){ showMsg('ちがう動き！'+EX_DEF[G.exKind].how, 800); SFX.bad(); }
+    else switchFace(dx<0?1:-1);
+  }
+});
+
+/* ============ メインループ ============ */
+const clock = new THREE.Clock();
+let elapsed=0;
+function easeOut(t){ return 1-Math.pow(1-t,3); }
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), .05);   // 120Hz対応：delta-time正規化＋クランプ
+  elapsed += dt;
+
+  // 頭の回転（交代）
+  headGroup.rotation.y += (headTargetRot - headGroup.rotation.y) * Math.min(1, 10*dt);
+
+  // 机の移動
+  table.position.x += (tableTargetX - table.position.x) * Math.min(1, 4*dt);
+
+  // 皿スライドイン
+  if(plate){
+    if(plate.state==='slide-in'){
+      plate.group.position.x += (0 - plate.group.position.x) * Math.min(1, 5*dt);
+      if(Math.abs(plate.group.position.x)<.05){ plate.group.position.x=0; plate.state='ready'; }
+    } else if(plate.state==='slide-out'){
+      plate.group.position.x += 14*dt;
+      if(plate.group.position.x>9){ removePlate(); if(G.state==='clearing'){ afterClear(); } }
+    }
+    plate.group.position.z = PLATE_Z; plate.group.position.y = PLATE_Y;
+  }
+
+  const inEatingFamily = (G.state==='eating'||G.state==='feeding'||G.state==='clearing');
+
+  /* --- 腕のポーズ制御 --- */
+  if(inEatingFamily){
+    const f=faces[activeFace].fullness;
+    // 上段：通常はゆらゆら／満腹でバツ
+    if(f>=WARN_AT){
+      arms[0][0].target.set(.55, 6.9, 1.1);
+      arms[0][1].target.set(-.55, 6.9, 1.1);
+      signX_R.visible=true; signX_L.visible=false;
+      signX_R.position.set(0, 7.35, 1.2);
+      signX_R.scale.setScalar(1+Math.sin(elapsed*8)*.08);
+    } else {
+      signX_R.visible=false;
+      arms[0][0].target.set( 2.1, 5.6+Math.sin(elapsed*2)*.15, .6);
+      arms[0][1].target.set(-2.1, 5.6+Math.sin(elapsed*2+1.5)*.15, .6);
+    }
+    // 下段：満腹でお腹押さえ
+    if(f>=WARN_AT){
+      arms[2][0].target.set( .6, 3.3+Math.sin(elapsed*6)*.08, 1.55);
+      arms[2][1].target.set(-.6, 3.3+Math.sin(elapsed*6+.5)*.08, 1.55);
+    } else {
+      arms[2][0].target.copy(REST[2][0]);
+      arms[2][1].target.copy(REST[2][1]);
+    }
+    // 中段左：待機
+    if(G.state!=='clearing') arms[1][1].target.copy(REST[1][1]);
+  }
+
+  /* --- 食べるシーケンス（中段右腕） --- */
+  if(G.state==='feeding' && G.feedTarget){
+    G.feedT += dt;
+    const arm=arms[1][0];
+    if(G.feedPhase===0){
+      // 食べ物へ
+      const wp=new THREE.Vector3(); G.feedTarget.getWorldPosition(wp);
+      arm.target.copy(worldToBody(wp)); arm.speed=9;
+      if(arm.hand.distanceTo(arm.target)<.3){
+        // つかむ：シーンへ付け替え
+        const wpos=new THREE.Vector3(); G.feedTarget.getWorldPosition(wpos);
+        plate.group.remove(G.feedTarget);
+        bodyRoot.add(G.feedTarget);
+        G.feedTarget.position.copy(worldToBody(wpos));
+        const idx=plate.pieces.indexOf(G.feedTarget); if(idx>=0) plate.pieces.splice(idx,1);
+        arm.held=G.feedTarget;
+        G.feedPhase=1; G.feedT=0;
+      }
+    } else if(G.feedPhase===1){
+      arm.target.copy(MOUTH); arm.speed=7;
+      refreshFace(activeFace, Math.min(1, 1-arm.hand.distanceTo(MOUTH)/2));
+      if(arm.hand.distanceTo(MOUTH)<.35){
+        bodyRoot.remove(G.feedTarget); arm.held=null; G.feedTarget=null;
+        G.feedPhase=2; G.feedT=0;
+      }
+    } else {
+      // もぐもぐ
+      refreshFace(activeFace, Math.abs(Math.sin(G.feedT*14)));
+      headGroup.scale.setScalar(1+Math.sin(G.feedT*14)*.03);
+      arm.target.copy(REST[1][0]);
+      if(G.feedT>.5){ headGroup.scale.setScalar(1); refreshFace(activeFace,0); finishEat(); }
+    }
+  } else if(G.state==='eating'){
+    arms[1][0].target.copy(REST[1][0]); arms[1][0].speed=6;
+  }
+
+  /* --- 皿片付け（中段左腕） --- */
+  if(G.state==='clearing' && plate){
+    G.feedT+=dt;
+    const arm=arms[1][1];
+    if(G.feedPhase===0){
+      const wp=new THREE.Vector3(); plate.group.getWorldPosition(wp); wp.x-=.9;
+      arm.target.copy(worldToBody(wp)); arm.speed=8;
+      if(arm.hand.distanceTo(arm.target)<.35){ G.feedPhase=1; plate.state='slide-out'; SFX.swipe(); }
+    } else {
+      const wp=new THREE.Vector3(); plate.group.getWorldPosition(wp); wp.x-=.7;
+      arm.target.copy(worldToBody(wp)); arm.speed=12;
+    }
+  }
+  /* --- 嘔吐 --- */
+  if(G.state==='vomit'){
+    G.vomitT+=dt;
+    const arm=arms[2][1];   // 下段左が看板担当
+    arm.target.set(-.4, 5.2, 1.9); arm.speed=10;
+    board.position.set(0, 5.9, 2.05);
+    board.rotation.z = Math.sin(elapsed*30)*.03;
+    // 頭ガクガク
+    headGroup.position.x = Math.sin(elapsed*40)*.08;
+    refreshFace(activeFace, .9);
+    arms[2][0].target.set(.6, 3.3, 1.55);
+    if(G.vomitT>2.2){
+      board.visible=false;
+      headGroup.position.x=0;
+      faces[activeFace].fullness=55;
+      refreshFace(activeFace,0);
+      G.state = (plate && plate.pieces.length===0) ? 'clearing' : 'eating';
+      if(G.state==='clearing'){ G.feedT=0; G.feedPhase=0; }
+      showMsg('すっきり…😮‍💨', 900);
+      updHUD();
+    }
+  }
+
+  /* --- 筋トレ --- */
+  if(G.state==='workout'){
+    signMuscle.position.set(0, 7.4, 1.2);
+    signMuscle.scale.setScalar(1+Math.sin(elapsed*5)*.06);
+    // 上段：ムキッポーズ
+    arms[0][0].target.set( 1.9, 5.9, .5);
+    arms[0][1].target.set(-1.9, 5.9, .5);
+    arms[2][0].target.set( 1.7, 2.6, .8);
+    arms[2][1].target.set(-1.7, 2.6, .8);
+
+    if(G.repAnimT<1){
+      G.repAnimT=Math.min(1, G.repAnimT+dt/.5);
+      const t=G.repAnimT, w=Math.sin(t*Math.PI);   // 0→1→0
+      if(G.exKind==='jump'){
+        bodyRoot.position.y = w*1.6;
+        bodyRoot.rotation.x = 0;
+        arms[1][0].target.set( 2.2, 6.3, .4); arms[1][1].target.set(-2.2, 6.3, .4);
+      } else if(G.exKind==='pushup'){
+        bodyRoot.rotation.x = .9;
+        bodyRoot.position.y = -(w*.9);
+        bodyRoot.position.z = .8;
+        arms[1][0].target.set( 1.5, 1.2, 2.4); arms[1][1].target.set(-1.5, 1.2, 2.4);
+      } else { // squat
+        bodyRoot.rotation.x = 0;
+        bodyRoot.position.y = -(w*1.1);
+        arms[1][0].target.set( 1.9, 4.6, 1.4); arms[1][1].target.set(-1.9, 4.6, 1.4);
+      }
+      if(G.repAnimT>=1){
+        bodyRoot.position.set(0,0,0); bodyRoot.rotation.set(0,0,0);
+        repDone();
+      }
+    } else {
+      // 待機ポーズ
+      if(G.exKind==='pushup'){ bodyRoot.rotation.x=.9; bodyRoot.position.z=.8; }
+      else { bodyRoot.rotation.x=0; bodyRoot.position.z=0; }
+      arms[1][0].target.set( 1.9, 3.6, 1.4);
+      arms[1][1].target.set(-1.9, 3.6, 1.4);
+    }
+  }
+
+  /* --- フィナーレ --- */
+  if(G.state==='finale'){
+    G.finaleT+=dt;
+    bodyRoot.position.y = Math.abs(Math.sin(G.finaleT*4))*.6;
+    headTargetRot += dt*2.5;
+    // 全腕バンザイひらひら
+    for(let t=0;t<3;t++) for(let s=0;s<2;s++){
+      const sign=s===0?1:-1;
+      arms[t][s].target.set(sign*(1.6+t*.2), 6.2+Math.sin(elapsed*6+t+s)*.5, .6);
+    }
+  }
+
+  // 紙吹雪
+  for(let i=confetti.length-1;i>=0;i--){
+    const m=confetti[i];
+    m.position.addScaledVector(m.userData.v, dt);
+    m.rotation.z+=m.userData.spin*dt; m.rotation.x+=m.userData.spin*.6*dt;
+    if(m.position.y<0){ scene.remove(m); confetti.splice(i,1); }
+  }
+
+  // 呼吸
+  if(inEatingFamily){
+    torso.scale.x = torso.scale.z = 1+Math.sin(elapsed*2.2)*.015 + Math.min(.25, faces[activeFace].fullness/400);
+  }
+
+  // IK更新
+  for(const arm of arms.flat()) solveArm(arm, dt);
+
+  renderer.render(scene, camera);
+}
+
+/* 片付け完了→次の皿 or 筋トレ判定 */
+function afterClear(){
+  restAll();
+  if(G.eatenThisRound >= G.eatPerRound){ startWorkout(); }
+  else { G.state='eating'; spawnPlate(); }
+}
+refreshFace(0); refreshFace(1); refreshFace(2);
+updHUD();
+animate();
+</script>
+</body>
+</html>
